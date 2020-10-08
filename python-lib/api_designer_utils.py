@@ -101,9 +101,8 @@ def copy_plugin_to_dss_folder(plugin_id, folder_id, project_key, force_copy=Fals
 
     root_path = dataiku.get_custom_variables(
         project_key=project_key)['dip.home']
-    # TODO change this to plugins/installed/...
-    plugin_lib_path = os.path.join(
-        root_path, 'plugins', 'installed', plugin_id, 'python-lib')
+
+    plugin_lib_path = get_plugin_lib_path(root_path, plugin_id)
 
     folder_path = dataiku.Folder(folder_id, project_key=project_key).get_path()
     lib_folder_path = os.path.join(folder_path, 'python-lib')
@@ -124,6 +123,14 @@ def copy_plugin_to_dss_folder(plugin_id, folder_id, project_key, force_copy=Fals
                 shutil.copy2(s, d)
     else:
         logger.info('python-lib already exists in folder')
+
+
+def get_plugin_lib_path(root_path, plugin_id):
+    for plugin_dir in ['installed', 'dev']:
+        plugin_lib_path = os.path.join(root_path, 'plugins', plugin_dir, plugin_id, 'python-lib')
+        if os.path.exists(plugin_lib_path):
+            return plugin_lib_path
+    raise Exception("Could not find path to plugin python-lib.")
 
 
 def get_api_service(params, project):

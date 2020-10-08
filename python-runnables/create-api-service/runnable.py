@@ -29,9 +29,7 @@ class MyRunnable(Runnable):
         self.plugin_config = plugin_config
         self.client = dataiku.api_client()
         self.project = self.client.get_project(self.project_key)
-        self.plugin_id = "object-detection"
-        # TO-DO way of getting the plugin_id within the macro? plugin_config
-        # seems empty
+        self.plugin_id = "object-detection-cpu"
 
     def get_progress_target(self):
         """
