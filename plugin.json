@@ -1,8 +1,8 @@
 {
     "id": "object-detection-cpu",
-    "version": "0.1.4",
+    "version": "0.1.5",
     "meta": {
-        "label": "Object detection in images",
+        "label": "Object detection in images (CPU)",
         "description": "Detect objects in images using deep learning",
         "author": "Dataiku (Arthur Douillard)",
         "icon": "icon-search",
