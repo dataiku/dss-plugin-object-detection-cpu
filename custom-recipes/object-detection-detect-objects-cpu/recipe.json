@@ -2,7 +2,7 @@
 {
     // Meta data for display purposes
     "meta" : {
-        "label" : "Detect objects in images",
+        "label" : "Detect objects in images (CPU)",
         "description" : "This recipe detects objects in images stored in a folder. It will create a dataset containing the locations of all found objects.",
         "icon" : "icon-search"
     },

@@ -272,7 +272,6 @@ def get_html_result(params):
 <div>Model folder : %s</div>
 <div>API service : %s</div>
 <div>Endpoint : %s</div>
-<a href="https://www.w3schools.com">See Service in API designer</a>
 """ % (params.get('model_folder_id'), params.get('service_id'), params.get('endpoint_id'))
 
     return html_str
