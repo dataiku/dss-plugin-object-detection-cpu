@@ -5,6 +5,7 @@ import os
 import sys
 import shutil
 import logging
+import json
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO,  # avoid getting log from 3rd party module
@@ -94,15 +95,12 @@ def get_params(config, client, project):
     return params
 
 
-def copy_plugin_to_dss_folder(plugin_id, folder_id, project_key, force_copy=False):
+def copy_plugin_to_dss_folder(plugin_id, root_path, folder_id, project_key, force_copy=False):
     """
     Copy python-lib from a plugin to a managed folder
     """
-
-    root_path = dataiku.get_custom_variables(
-        project_key=project_key)['dip.home']
-
-    plugin_lib_path = get_plugin_lib_path(root_path, plugin_id)
+    plugin_path = get_plugin_path(root_path, plugin_id)
+    plugin_lib_path = os.path.join(plugin_path, 'python-lib')
 
     folder_path = dataiku.Folder(folder_id, project_key=project_key).get_path()
     lib_folder_path = os.path.join(folder_path, 'python-lib')
@@ -125,12 +123,26 @@ def copy_plugin_to_dss_folder(plugin_id, folder_id, project_key, force_copy=Fals
         logger.info('python-lib already exists in folder')
 
 
-def get_plugin_lib_path(root_path, plugin_id):
+def get_plugin_path(root_path, plugin_id):
     for plugin_dir in ['installed', 'dev']:
-        plugin_lib_path = os.path.join(root_path, 'plugins', plugin_dir, plugin_id, 'python-lib')
-        if os.path.exists(plugin_lib_path):
-            return plugin_lib_path
-    raise Exception("Could not find path to plugin python-lib.")
+        plugin_path = os.path.join(root_path, 'plugins', plugin_dir, plugin_id)
+        if os.path.exists(plugin_path):
+            return plugin_path
+    raise Exception("Could not find path to plugin.")
+
+
+def get_requirements(plugin_path):
+    plugin_requirements_path = os.path.join(plugin_path, 'code-env', 'python', 'spec', 'requirements.txt')
+    with open(plugin_requirements_path, 'r') as txt_file:
+        requirements = txt_file.read()
+    return requirements
+
+
+def get_plugin_desc(plugin_path):
+    plugin_desc_path = os.path.join(plugin_path, 'code-env', 'python', 'desc.json')
+    with open(plugin_desc_path, 'r') as json_file:
+        plugin_desc = json.load(json_file)
+    return plugin_desc
 
 
 def get_api_service(params, project):
@@ -145,19 +157,22 @@ def get_api_service(params, project):
     return api_service
 
 
-def create_api_code_env(client, env_name, use_gpu):
+def create_api_code_env(plugin_id, root_path, client, env_name, use_gpu):
+    plugin_path = get_plugin_path(root_path, plugin_id)
+    plugin_requirements = get_requirements(plugin_path)
+    plugin_desc = get_plugin_desc(plugin_path)
 
     already_exist = env_name in [
         env.get('envName') for env in client.list_code_envs()]
 
     if not already_exist:
         _ = client.create_code_env(env_lang='PYTHON', env_name=env_name, deployment_mode='DESIGN_MANAGED', params={
-                                   'pythonInterpreter': 'PYTHON36'})
+                                   'pythonInterpreter': plugin_desc['acceptedPythonInterpreters'][0]})
 
     my_env = client.get_code_env('PYTHON', env_name)
     env_def = my_env.get_definition()
-    env_def['specPackageList'] = "tensorflow==1.4.0\nkeras==2.2.4\nh5py>=2.7.1\nopencv-python==3.4.0.12\nPillow>=5.1\ngit+https://github.com/fizyr/keras-retinanet.git@0d89a33bace90591cad7882cf0b1cdbf0fbced43\npip==9.0.1\nscikit-learn>=0.19\nboto3>=1.7<1.8"
-    env_def['desc']['installCorePackages'] = True
+    env_def['specPackageList'] = plugin_requirements
+    env_def['desc']['installCorePackages'] = plugin_desc['installCorePackages']
     my_env.set_definition(env_def)
     my_env.update_packages()
 

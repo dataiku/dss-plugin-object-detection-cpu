@@ -45,9 +45,11 @@ class MyRunnable(Runnable):
         """
 
         params = get_params(self.config, self.client, self.project)
-        copy_plugin_to_dss_folder(self.plugin_id, params.get(
+        root_path = dataiku.get_custom_variables(project_key=self.project_key)['dip.home']
+
+        copy_plugin_to_dss_folder(self.plugin_id, root_path, params.get(
             "model_folder_id"), self.project_key, force_copy=True)
-        create_api_code_env(self.client, params.get(
+        create_api_code_env(self.plugin_id, root_path, self.client, params.get(
             'code_env_name'), params.get('use_gpu'))
         api_service = get_api_service(params, self.project)
         endpoint_settings = get_model_endpoint_settings(params)
