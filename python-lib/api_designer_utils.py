@@ -156,7 +156,7 @@ def create_api_code_env(client, env_name, use_gpu):
 
     my_env = client.get_code_env('PYTHON', env_name)
     env_def = my_env.get_definition()
-    env_def['specPackageList'] = "tensorflow==1.4.0\nkeras>=2.0.9\nh5py>=2.7.1\nopencv-python==3.4.0.12\nPillow>=5.1\ngit+https://github.com/fizyr/keras-retinanet.git@0d89a33bace90591cad7882cf0b1cdbf0fbced43\npip==9.0.1\nscikit-learn>=0.19\nboto3>=1.7<1.8"
+    env_def['specPackageList'] = "tensorflow==1.4.0\nkeras==2.2.4\nh5py>=2.7.1\nopencv-python==3.4.0.12\nPillow>=5.1\ngit+https://github.com/fizyr/keras-retinanet.git@0d89a33bace90591cad7882cf0b1cdbf0fbced43\npip==9.0.1\nscikit-learn>=0.19\nboto3>=1.7<1.8"
     env_def['desc']['installCorePackages'] = True
     my_env.set_definition(env_def)
     my_env.update_packages()

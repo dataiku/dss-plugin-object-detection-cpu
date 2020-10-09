@@ -4,7 +4,7 @@
     "meta": {
         "label": "Object detection in images (CPU)",
         "description": "Detect objects in images using deep learning",
-        "author": "Dataiku (Arthur Douillard)",
+        "author": "Dataiku",
         "icon": "icon-search",
         "licenseInfo": "Apache Software License",
         "url": "https://www.dataiku.com/dss/plugins/info/object-detection.html",
