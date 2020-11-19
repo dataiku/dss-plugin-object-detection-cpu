@@ -1,6 +1,6 @@
 {
     "id": "object-detection-cpu",
-    "version": "0.1.5",
+    "version": "0.1.6",
     "meta": {
         "label": "Object detection in images (CPU)",
         "description": "Detect objects in images using deep learning",
