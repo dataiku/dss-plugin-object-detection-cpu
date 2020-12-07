@@ -5,9 +5,14 @@
         "label": "Object detection in images (CPU)",
         "description": "Detect objects in images using deep learning",
         "author": "Dataiku",
-        "icon": "icon-search",
+        "icon": "icon-eye-open",
         "licenseInfo": "Apache Software License",
-        "url": "https://www.dataiku.com/dss/plugins/info/object-detection.html",
-        "tags": ["Images", "Machine Learning", "Deep Learning"]
+        "url": "https://www.dataiku.com/product/plugins/object-detection-cpu/",
+        "tags": [
+            "Image",
+            "Machine Learning",
+            "Deep Learning",
+            "Computer Vision"
+        ]
     }
 }
