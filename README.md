@@ -1,11 +1,14 @@
-# Deep Learning Object Detection Plugin
+# Deep Learning Object Detection Plugin (Partially superseded)
 
 This plugin provides tools to perform object detection using Deep Learning.
 
 Object detection consists in detecting the location and class of several
 objects in a same image.
 
-The plugin comes with four recipes and a macro.
+⚠️ Starting with DSS version 10 this plugin is partially superseded by the native [object detection capabilities](https://doc.dataiku.com/dss/latest/machine-learning/computer-vision/index.html).
+
+It comes with four recipes and a macro.
+
 
 # Macro
 
