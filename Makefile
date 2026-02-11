@@ -45,3 +45,76 @@ tests: unit-tests integration-tests
 
 dist-clean:
 	rm -rf dist%
+
+# Docker-based unit tests for Linux environment
+# Uses --platform linux/amd64 to ensure consistent behavior on Apple Silicon
+#
+# Usage:
+#   make docker-test-py310              # Without cache (default, CI)
+#   make docker-test-py310 USE_CACHE=true  # With pip cache (faster local iteration)
+
+DOCKER_IMAGE_NAME=object-detection-cpu
+DOCKER_PLATFORM=linux/amd64
+USE_CACHE?=false
+
+define run-docker-test
+	@echo "[START] Running unit tests in Docker with Python $(1) (USE_CACHE=$(USE_CACHE))..."
+	@docker build \
+		--platform $(DOCKER_PLATFORM) \
+		--build-arg PYTHON_VERSION=$(1) \
+		--build-arg USE_CACHE=$(USE_CACHE) \
+		-t $(DOCKER_IMAGE_NAME):py$(1) \
+		-f tests/docker/Dockerfile \
+		. && \
+	docker run --rm --platform $(DOCKER_PLATFORM) $(DOCKER_IMAGE_NAME):py$(1)
+	@echo "[DONE] Python $(1) tests completed"
+endef
+
+
+docker-clean:
+	@echo "Removing Docker test images..."
+	@docker rmi -f $(DOCKER_IMAGE_NAME):py3.6 $(DOCKER_IMAGE_NAME):py3.7 $(DOCKER_IMAGE_NAME):py3.8 $(DOCKER_IMAGE_NAME):py3.9 $(DOCKER_IMAGE_NAME):py3.10 $(DOCKER_IMAGE_NAME):py3.11 $(DOCKER_IMAGE_NAME):py3.12 2>/dev/null || true
+	@echo "Docker images cleaned"
+
+docker-test-py36:
+	$(call run-docker-test,3.6)
+
+docker-test-py39:
+	$(call run-docker-test,3.9)
+
+docker-test-py310:
+	$(call run-docker-test,3.10)
+
+docker-test-py311:
+	$(call run-docker-test,3.11)
+
+docker-test-py312:
+	$(call run-docker-test,3.12)
+
+
+
+# Run all tests with summary (continues on failure, reports at end)
+PYTHON_VERSIONS = 3.6 3.9 3.10 3.11 3.12
+
+docker-test-all:
+	@failed=""; passed=""; \
+	for ver in $(PYTHON_VERSIONS); do \
+		echo ""; \
+		echo "############################################"; \
+		echo "# Testing Python $$ver"; \
+		echo "############################################"; \
+		target="docker-test-py$$(echo $$ver | tr -d '.')"; \
+		if $(MAKE) $$target USE_CACHE=$(USE_CACHE); then \
+			passed="$$passed $$ver"; \
+		else \
+			failed="$$failed $$ver"; \
+		fi; \
+	done; \
+	echo ""; \
+	echo "############################################"; \
+	echo "#              TEST SUMMARY"; \
+	echo "############################################"; \
+	if [ -n "$$passed" ]; then echo "PASSED:$$passed"; fi; \
+	if [ -n "$$failed" ]; then echo "FAILED:$$failed"; fi; \
+	echo "############################################"; \
+	if [ -n "$$failed" ]; then exit 1; fi

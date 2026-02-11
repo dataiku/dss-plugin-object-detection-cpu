@@ -1,9 +1,21 @@
-keras==2.2.4
-h5py==2.10.0
-opencv-python==3.4.0.12
-Pillow>=5.1
-git+https://github.com/fizyr/keras-retinanet.git@0d89a33bace90591cad7882cf0b1cdbf0fbced43
-pip==9.0.1
-scikit-learn>=0.19
-boto3>=1.7<1.8
-tensorflow==1.4.0
+# Legacy stack for Python 3.6-3.8
+keras==2.2.4; python_version < '3.9'
+h5py==2.10.0; python_version < '3.9'
+opencv-python==3.4.0.14; python_version < '3.9'
+Pillow>=5.1; python_version < '3.9'
+git+https://github.com/fizyr/keras-retinanet.git@0d89a33bace90591cad7882cf0b1cdbf0fbced43; python_version < '3.9'
+pip==9.0.1; python_version < '3.7'
+scikit-learn>=0.19; python_version < '3.9'
+boto3>=1.7,<1.8; python_version < '3.9'
+tensorflow==1.4.0; python_version < '3.9'
+
+# Modern stack for Python 3.9-3.12
+keras>=2.13,<2.16; python_version >= '3.9' and python_version < '3.12'
+keras>=3.0,<4.0; python_version >= '3.12' and python_version < '3.13'
+h5py>=3.8,<4; python_version >= '3.9'
+opencv-python>=4.8,<5; python_version >= '3.9'
+Pillow>=9.5; python_version >= '3.9'
+scikit-learn>=1.2,<2; python_version >= '3.9'
+boto3>=1.28; python_version >= '3.9'
+tensorflow>=2.13,<2.16; python_version >= '3.9' and python_version < '3.12'
+tensorflow>=2.16,<2.22; python_version >= '3.12' and python_version < '3.13'

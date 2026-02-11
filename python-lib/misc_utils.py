@@ -115,10 +115,11 @@ def jaccard(a, b):
 
 def compute_metrics(true_pos, false_pos, false_neg):
     """Compute the precision, recall, and f1 score."""
-    precision = true_pos / (true_pos + false_pos)
-    recall = true_pos / (true_pos + false_neg)
+    precision = true_pos / (true_pos + false_pos) if (true_pos + false_pos) else 0.0
+    recall = true_pos / (true_pos + false_neg) if (true_pos + false_neg) else 0.0
 
-    if precision == 0 or recall == 0: return precision, recall, f1
+    if precision == 0 or recall == 0:
+        return precision, recall, 0.0
 
     f1 = 2 / (1/precision + 1/recall)
     return precision, recall, f1
@@ -141,10 +142,11 @@ def draw_bboxes(src_path, dst_path, df, label_cap, confidence_cap, ids):
     image = read_image_bgr(src_path)
 
     for _, row in df.iterrows():
-        if isinstance(row.class_name, float): continue
+        if isinstance(row["class_name"], float):
+            continue
 
-        box = tuple(row[1:5])
-        name = str(row[5])
+        box = tuple(row[["x1", "y1", "x2", "y2"]])
+        name = str(row["class_name"])
 
         color = label_color(ids.index(name))
 
@@ -155,7 +157,7 @@ def draw_bboxes(src_path, dst_path, df, label_cap, confidence_cap, ids):
             if label_cap:
                 txt = [name]
             if confidence_cap:
-                confidence = round(row[6], 2)
+                confidence = round(row["confidence"], 2)
                 txt.append(str(confidence))
             draw_caption(image, box, ' '.join(txt))
 
