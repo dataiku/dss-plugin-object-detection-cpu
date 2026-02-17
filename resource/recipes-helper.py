@@ -3,13 +3,15 @@ import glob
 
 import pandas as pd
 import numpy as np
-import tensorflow as tf
 from PIL import Image
 
 import dataiku
 import gpu_utils
 import misc_utils
 import constants
+
+DEFAULT_MIN_SIDE = 800
+DEFAULT_MAX_SIDE = 1333
 
 
 def get_dataset_info(inputs):
@@ -77,10 +79,22 @@ def get_avg_side(inputs, n_first=3000):
     sides = []
     for path in paths:
         path = os.path.join(folder_path, path[1:])
-        with Image.open(path) as img: # PIL does not load the raster data at this point, so it's fast.
-            w, h = img.size
-        sides.append(w)
-        sides.append(h)
+        try:
+            # PIL does not load raster data at this point, so reading size is fast.
+            with Image.open(path) as img:
+                w, h = img.size
+            sides.append(w)
+            sides.append(h)
+        except Exception:
+            # Skip unreadable files during setup stat computation.
+            continue
+
+    if len(sides) == 0:
+        return {
+            'min_side': DEFAULT_MIN_SIDE,
+            'max_side': DEFAULT_MAX_SIDE
+        }
+
     sides = np.array(sides)
     
     return {

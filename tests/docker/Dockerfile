@@ -20,6 +20,7 @@ RUN pip install --upgrade pip && \
 
 # Copy source code and resources
 COPY python-lib/ /plugin/python-lib/
+COPY resource/ /plugin/resource/
 COPY tests/python-lib/ /plugin/tests/python/unit/
 
 # Set environment variables
