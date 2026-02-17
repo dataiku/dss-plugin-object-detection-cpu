@@ -104,7 +104,7 @@ logging.info('Nb labels: {:15}.'.format(len(class_mapping)))
 logging.info('Nb images: {:15}.'.format(len(train_gen.image_names)))
 logging.info('Nb val images: {:11}'.format(len(val_gen.image_names)))
 
-train_model.fit_generator(
+train_model.fit(
     train_gen,
     steps_per_epoch=len(train_gen),
     validation_data=val_gen,

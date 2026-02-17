@@ -6,16 +6,8 @@ import logging
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
-from keras import optimizers
 from keras import callbacks
-from keras.utils import multi_gpu_model
-from keras.models import load_model
-import tensorflow as tf
 import cv2
-import keras_retinanet
-from keras_retinanet.models.resnet import resnet50_retinanet
-from keras_retinanet.models.retinanet import retinanet_bbox
-from keras_retinanet.utils.model import freeze as freeze_model
 from keras_retinanet.utils.image import read_image_bgr, preprocess_image, resize_image
 from keras_retinanet.utils.visualization import draw_box
 from keras_retinanet.utils.colors import label_color

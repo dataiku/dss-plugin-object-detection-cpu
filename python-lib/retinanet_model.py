@@ -6,8 +6,12 @@ import cv2
 import tensorflow as tf
 from keras import optimizers
 from keras import callbacks
-from keras.utils import multi_gpu_model
-from keras.models import load_model
+import inspect
+
+try:
+    from keras.utils import multi_gpu_model
+except Exception:
+    multi_gpu_model = None
 import keras_retinanet
 from keras_retinanet.models.resnet import resnet50_retinanet
 from keras_retinanet.models.retinanet import retinanet_bbox
@@ -39,6 +43,11 @@ def get_model(weights, num_classes, freeze=False, n_gpu=None):
     modifier = freeze_model if freeze else None
 
     if multi_gpu:
+        if multi_gpu_model is None:
+            logging.warning('`keras.utils.multi_gpu_model` is unavailable. Falling back to single model.')
+            model = resnet50_retinanet(num_classes=num_classes, modifier=modifier)
+            model.load_weights(weights, by_name=True, skip_mismatch=True)
+            return model, model
         logging.info('Loading model in multi gpu mode.')
         with tf.device('/cpu:0'):
             model = resnet50_retinanet(num_classes=num_classes, modifier=modifier)
@@ -75,10 +84,17 @@ def get_test_model(weights, num_classes):
 
 def compile_model(model, configs):
     """Compile retinanet."""
+    lr = float(configs['lr'])
     if configs['optimizer'].lower() == 'adam':
-        opt = optimizers.adam(lr=configs['lr'], clipnorm=0.001)
+        try:
+            opt = optimizers.Adam(learning_rate=lr, clipnorm=0.001)
+        except Exception:
+            opt = optimizers.adam(lr=lr, clipnorm=0.001)
     else:
-        opt = optmizers.SGD(lr=configs['lr'], momentum=True, nesterov=True, clipnorm=0.001)
+        try:
+            opt = optimizers.SGD(learning_rate=lr, momentum=0.9, nesterov=True, clipnorm=0.001)
+        except Exception:
+            opt = optimizers.SGD(lr=lr, momentum=0.9, nesterov=True, clipnorm=0.001)
 
     model .compile(
         loss={
@@ -251,13 +267,17 @@ class MultiGPUModelCheckpoint(callbacks.ModelCheckpoint):
     def __init__(self, filepath, base_model, monitor='val_loss', verbose=0,
                  save_best_only=False, save_weights_only=False,
                  mode='auto', period=1):
-        super(MultiGPUModelCheckpoint, self).__init__(filepath,
-                                                      monitor=monitor,
-                                                      verbose=verbose,
-                                                      save_best_only=save_best_only,
-                                                      save_weights_only=save_weights_only,
-                                                      mode=mode,
-                                                      period=period)
+        kwargs = dict(
+            monitor=monitor,
+            verbose=verbose,
+            save_best_only=save_best_only,
+            save_weights_only=save_weights_only,
+            mode=mode,
+        )
+        if 'period' in inspect.signature(callbacks.ModelCheckpoint.__init__).parameters:
+            kwargs['period'] = period
+
+        super(MultiGPUModelCheckpoint, self).__init__(filepath, **kwargs)
         self.base_model = base_model
 
     def on_epoch_end(self, epoch, logs=None):
