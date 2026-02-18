@@ -30,5 +30,5 @@ for path in paths:
         shutil.copy(src_path, dst_path)
         continue
     
-    misc_utils.draw_bboxes(src_path, src_folder, dst_path, dst_folder, df, label_caption, confidence_caption, ids)
+    misc_utils.draw_bboxes(path, src_folder, path, dst_folder, df, label_caption, confidence_caption, ids)
    
