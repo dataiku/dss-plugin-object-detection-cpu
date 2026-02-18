@@ -1,11 +1,10 @@
 import subprocess as sp
 import os
-import random
+
 import logging
 
-import pandas as pd
 import numpy as np
-from sklearn.model_selection import train_test_split
+
 from keras_compat import bootstrap_keras_retinanet_compat
 
 # Must run before importing keras/keras-retinanet symbols.
@@ -13,7 +12,6 @@ bootstrap_keras_retinanet_compat()
 
 from keras import callbacks
 import cv2
-from keras_retinanet.utils.image import read_image_bgr, preprocess_image, resize_image
 from keras_retinanet.utils.visualization import draw_box
 from keras_retinanet.utils.colors import label_color
 
@@ -122,7 +120,9 @@ def compute_metrics(true_pos, false_pos, false_neg):
     return precision, recall, f1
 
 
-def draw_bboxes(src_path, dst_path, df, label_cap, confidence_cap, ids):
+def draw_bboxes(src_path, source_folder, dst_path, dst_folder, df, label_cap, confidence_cap, ids):
+    from PIL import Image
+    
     """Draw boxes on images.
 
     Args:
@@ -136,7 +136,11 @@ def draw_bboxes(src_path, dst_path, df, label_cap, confidence_cap, ids):
     Returns:
         None.
     """
-    image = read_image_bgr(src_path)
+
+    with source_folder.get_download_stream(path=src_path) as stream:
+        image = np.array(Image.open(stream).convert('RGB'), copy=True)
+    # Convert RGB->BGR and force a writable contiguous buffer for OpenCV.
+    image = np.ascontiguousarray(image[:, :, ::-1].copy())
 
     for _, row in df.iterrows():
         if isinstance(row["class_name"], float):
@@ -159,7 +163,13 @@ def draw_bboxes(src_path, dst_path, df, label_cap, confidence_cap, ids):
             draw_caption(image, box, ' '.join(txt))
 
     logging.info('Drawing {}'.format(dst_path))
-    cv2.imwrite(dst_path, image)
+    ext = os.path.splitext(dst_path)[1].lower() or '.jpg'
+    ok, encoded = cv2.imencode(ext, image)
+    if not ok:
+        raise RuntimeError('Could not encode image for {}'.format(dst_path))
+
+    with dst_folder.get_writer(dst_path) as w:
+        w.write(encoded.tobytes())
 
 
 def draw_caption(image, box, caption):
