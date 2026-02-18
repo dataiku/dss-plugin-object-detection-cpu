@@ -6,6 +6,11 @@ import logging
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
+from keras_compat import bootstrap_keras_retinanet_compat
+
+# Must run before importing keras/keras-retinanet symbols.
+bootstrap_keras_retinanet_compat()
+
 from keras import callbacks
 import cv2
 from keras_retinanet.utils.image import read_image_bgr, preprocess_image, resize_image

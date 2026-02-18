@@ -1,9 +1,16 @@
 import logging
 import os
+import math
 
 import numpy as np
 import cv2
+from keras_compat import bootstrap_keras_retinanet_compat
+
+# Must run before importing tensorflow/keras/keras-retinanet symbols.
+bootstrap_keras_retinanet_compat()
+
 import tensorflow as tf
+import keras
 from keras import optimizers
 from keras import callbacks
 import inspect
@@ -23,6 +30,75 @@ import misc_utils
 
 
 logging.basicConfig(level=logging.INFO, format='[Object Detection] %(levelname)s - %(message)s')
+
+
+def _ensure_legacy_keras_initializers():
+    """Backwards compatibility for older keras-retinanet code paths."""
+    if hasattr(keras.initializers, 'normal'):
+        return
+
+    def _normal(mean=0.0, stddev=0.05, seed=None):
+        return keras.initializers.RandomNormal(mean=mean, stddev=stddev, seed=seed)
+
+    keras.initializers.normal = _normal
+
+
+def _to_numpy_dtype(dtype):
+    """Convert tf/keras dtypes to numpy dtypes for old keras-retinanet code."""
+    if dtype is None:
+        return None
+    if isinstance(dtype, np.dtype):
+        return dtype
+    try:
+        return tf.as_dtype(dtype).as_numpy_dtype
+    except Exception:
+        pass
+    try:
+        return np.dtype(dtype)
+    except Exception:
+        return dtype
+
+
+def _ensure_legacy_retinanet_prior_probability():
+    """Patch keras-retinanet PriorProbability for keras/tf dtype compatibility."""
+    prior_cls = getattr(keras_retinanet.initializers, 'PriorProbability', None)
+    if prior_cls is None:
+        return
+
+    def _patched_call(self, shape, dtype=None):
+        np_dtype = _to_numpy_dtype(dtype) or np.float32
+        return np.ones(shape, dtype=np_dtype) * -math.log((1 - self.probability) / self.probability)
+
+    prior_cls.__call__ = _patched_call
+
+
+def _ensure_legacy_tf_resize_images():
+    """Restore removed tf.image.resize_images symbol for legacy keras-retinanet."""
+    if hasattr(tf.image, 'resize_images'):
+        return
+
+    legacy_resize = getattr(tf.compat.v1.image, 'resize_images', None)
+    if legacy_resize is not None:
+        tf.image.resize_images = legacy_resize
+        return
+
+    def _resize_images(images, size, method=tf.image.ResizeMethod.BILINEAR, align_corners=False,
+                       preserve_aspect_ratio=False, name=None):
+        del align_corners  # not supported by tf.image.resize in newer TF
+        return tf.image.resize(
+            images=images,
+            size=size,
+            method=method,
+            preserve_aspect_ratio=preserve_aspect_ratio,
+            name=name
+        )
+
+    tf.image.resize_images = _resize_images
+
+
+_ensure_legacy_keras_initializers()
+_ensure_legacy_retinanet_prior_probability()
+_ensure_legacy_tf_resize_images()
 
 
 def get_model(weights, num_classes, freeze=False, n_gpu=None):
