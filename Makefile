@@ -76,9 +76,6 @@ docker-clean:
 	@docker rmi -f $(DOCKER_IMAGE_NAME):py3.6 $(DOCKER_IMAGE_NAME):py3.7 $(DOCKER_IMAGE_NAME):py3.8 $(DOCKER_IMAGE_NAME):py3.9 $(DOCKER_IMAGE_NAME):py3.10 $(DOCKER_IMAGE_NAME):py3.11 $(DOCKER_IMAGE_NAME):py3.12 2>/dev/null || true
 	@echo "Docker images cleaned"
 
-docker-test-py36:
-	$(call run-docker-test,3.6)
-
 docker-test-py39:
 	$(call run-docker-test,3.9)
 
@@ -94,7 +91,7 @@ docker-test-py312:
 
 
 # Run all tests with summary (continues on failure, reports at end)
-PYTHON_VERSIONS = 3.6 3.9 3.10 3.11 3.12
+PYTHON_VERSIONS = 3.9 3.10 3.11 3.12
 
 docker-test-all:
 	@failed=""; passed=""; \

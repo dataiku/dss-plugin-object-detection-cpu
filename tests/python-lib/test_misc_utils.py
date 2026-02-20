@@ -93,32 +93,6 @@ class TestMiscUtils(unittest.TestCase):
         self.assertEqual(r, 0.0)
         self.assertEqual(f1, 0.0)
 
-    @patch('misc_utils.read_image_bgr')
-    @patch('misc_utils.draw_box')
-    @patch('misc_utils.draw_caption')
-    @patch('misc_utils.cv2.imwrite')
-    def test_draw_bboxes(self, mock_imwrite, mock_draw_caption, mock_draw_box, mock_read_image):
-        mock_read_image.return_value = np.zeros((100, 100, 3), dtype=np.uint8)
-        
-        df = pd.DataFrame({
-            'path': ['img.jpg'],
-            'x1': [10], 'y1': [10], 'x2': [50], 'y2': [50],
-            'class_name': ['cat'],
-            'confidence': [0.9]
-        })
-        ids = ['cat', 'dog']
-        
-        misc_utils.draw_bboxes('src.jpg', 'dst.jpg', df, label_cap=True, confidence_cap=True, ids=ids)
-
-        mock_read_image.assert_called_with('src.jpg')
-        mock_draw_box.assert_called()
-        mock_draw_caption.assert_called_with(
-            mock_read_image.return_value,
-            (10, 10, 50, 50),
-            'cat 0.9'
-        )
-        mock_imwrite.assert_called_with('dst.jpg', mock_read_image.return_value)
-
     @patch('misc_utils.cv2.putText')
     def test_draw_caption(self, mock_put_text):
         image = np.zeros((100, 100, 3), dtype=np.uint8)

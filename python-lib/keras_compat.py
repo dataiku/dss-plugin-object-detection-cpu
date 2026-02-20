@@ -1,6 +1,7 @@
 import importlib.metadata as importlib_metadata
 import os
 import sys
+import types
 
 
 def _safe_version(pkg_name):
@@ -71,6 +72,16 @@ def _patch_keras_retinanet_initializers():
 
     _patched_call.__dss_dtype_patch__ = True
     prior_probability.__call__ = _patched_call
+
+
+def _has_real_keras_retinanet_package():
+    """Return True when keras_retinanet is loaded as an actual package."""
+    kr_module = sys.modules.get("keras_retinanet")
+    if kr_module is None:
+        return True
+    if not isinstance(kr_module, types.ModuleType):
+        return False
+    return hasattr(kr_module, "__path__")
 
 
 def _patch_keras_retinanet_map_fn():
@@ -210,6 +221,11 @@ def bootstrap_keras_retinanet_compat():
             "Use TensorFlow 2.x with TF_USE_LEGACY_KERAS=1 and tf-keras installed."
             .format(", ".join(missing_symbols), tf_version, keras_version, tf_keras_version)
         )
+
+    # Unit tests can inject lightweight stubs into sys.modules for keras-retinanet.
+    # In that case, skip runtime patching that requires real package internals.
+    if not _has_real_keras_retinanet_package():
+        return
 
     try:
         _patch_keras_retinanet_initializers()
