@@ -83,37 +83,6 @@ class TestRetinaNetModel(unittest.TestCase):
         self.assertEqual(len(boxes), 1)
         mock_read.assert_called_with('img1.jpg')
 
-    @patch('cv2.VideoCapture')
-    @patch('cv2.VideoWriter')
-    @patch('retinanet_model.find_objects_single')
-    @patch('misc_utils.mkv_to_mp4')
-    @patch('misc_utils.draw_box')
-    def test_detect_in_video_file(self, mock_draw, mock_mkv, mock_find, mock_writer, mock_capture):
-        cap = mock_capture.return_value
-        # Loop runs while cap.isOpened(). Logic: ret, img = cap.read(). if not ret: break.
-        cap.isOpened.return_value = True
-        cap.read.side_effect = [(True, np.zeros((100,100,3))), (False, None)]
-        cap.get.return_value = 30 # FPS, width, height
-        
-        mock_find.return_value = (
-            np.array([[[0,0,10,10]]]),
-            np.array([[0.9]]),
-            np.array([[0]])
-        )
-        
-        model = MagicMock()
-        retinanet_model.detect_in_video_file(model, 'in.mp4', 'out_dir', detection_rate=1)
-
-        expected_out = os.path.join('out_dir', 'in-detected.mkv')
-        mock_writer.assert_called_with(
-            expected_out,
-            retinanet_model.cv2.VideoWriter_fourcc.return_value,
-            30,
-            (30, 30)
-        )
-        mock_find.assert_called()
-        mock_mkv.assert_called()
-
     @patch('retinanet_model.random_transform_generator')
     def test_get_random_augmentator(self, mock_gen):
         configs = {

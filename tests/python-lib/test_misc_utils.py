@@ -40,7 +40,7 @@ class TestMiscUtils(unittest.TestCase):
              patch('os.remove') as mock_remove:
 
             # Test case 1: Basic conversion
-            misc_utils.mkv_to_mp4('test.mkv', remove_mkv=False, has_audio=True, quiet=True)
+            misc_utils.source_to_mp4('test.mkv', remove_source=False, has_audio=True, quiet=True)
             mock_call.assert_called()
             args, _ = mock_call.call_args
             # The exact string might vary depending on implementation details, check key parts
@@ -48,7 +48,7 @@ class TestMiscUtils(unittest.TestCase):
             self.assertIn('test.mp4', args[0])
 
             # Test case 2: Remove MKV after conversion
-            misc_utils.mkv_to_mp4('test.mkv', remove_mkv=True, has_audio=False, quiet=False)
+            misc_utils.source_to_mp4('test.mkv', remove_source=True, has_audio=False, quiet=False)
             mock_remove.assert_called_with('test.mkv')
 
     def test_split_dataset(self):
