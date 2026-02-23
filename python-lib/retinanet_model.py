@@ -342,7 +342,7 @@ def detect_in_video_file(model, in_vid_path, out_dir, detection_rate=None):
 
     logging.info("Done. Frames written: %d, output: %s, size=%d bytes", idx, out_path, os.path.getsize(out_path))
 
-    misc_utils.source_to_mp4(out_path, remove_mkv=True, has_audio=False, quiet=True)
+    misc_utils.source_to_mp4(out_path, remove_source=True, has_audio=False, quiet=True)
 
 
 def get_random_augmentator(configs):
