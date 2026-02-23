@@ -19,22 +19,21 @@ from keras_retinanet.utils.colors import label_color
 logging.basicConfig(level=logging.INFO, format='[Object Detection] %(levelname)s - %(message)s')
 
 
-def mkv_to_mp4(mkv_path, remove_mkv=False, has_audio=True, quiet=True):
-    """Transform MKV to MP4 format.
+def source_to_mp4(input_path, remove_source=False, has_audio=True, quiet=True):
+    """Transform source video to MP4 format.
 
     Args:
-        mkv_path:   Path to the MKV temporary file.
-        remove_mkv: Delete the MKV temporary file.
+        input_path:   Path to the source temporary file.
+        remove_source: Delete the source temporary file.
         has_audio:  Keep audio in the MP4 file.
         quiet:      Silence ffmpeg conversion.
 
     Returns:
         None
     """
-    assert os.path.isfile(mkv_path)
-    print(mkv_path)
-    assert os.path.splitext(mkv_path)[1] == '.mkv'
-    mp4_path = os.path.splitext(mkv_path)[0] + '.mp4'
+    assert os.path.isfile(input_path)
+    print(input_path)
+    mp4_path = os.path.splitext(input_path)[0] + '.mp4'
 
     if os.path.isfile(mp4_path):
         os.remove(mp4_path)
@@ -44,13 +43,13 @@ def mkv_to_mp4(mkv_path, remove_mkv=False, has_audio=True, quiet=True):
 
     quiet_str = '>/dev/null 2>&1' if quiet else ''
     cmd = 'ffmpeg -i {} -vcodec copy {} {} {}'.format(
-        mkv_path, audio_codec_string, mp4_path, quiet_str)
+        input_path, audio_codec_string, mp4_path, quiet_str)
 
     sp.call(cmd, shell=True)
 
 
-    if remove_mkv and os.path.isfile(mp4_path):
-        os.remove(mkv_path) # Remove mkv only if mp4 was not created.
+    if remove_source and os.path.isfile(mp4_path):
+        os.remove(input_path) # Remove mkv only if mp4 was not created.
 
 
 def split_dataset(df, val_split=0.8, shuffle=True, seed=42):

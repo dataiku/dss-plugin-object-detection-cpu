@@ -1,9 +1,11 @@
 import logging
 import os
+os.environ["OPENCV_LOG_LEVEL"] = "DEBUG"
+os.environ["OPENCV_VIDEOIO_DEBUG"] = "1"   # important
+import cv2
 import math
 
 import numpy as np
-import cv2
 from keras_compat import bootstrap_keras_retinanet_compat
 
 # Must run before importing tensorflow/keras/keras-retinanet symbols.
@@ -270,49 +272,77 @@ def detect_in_video_file(model, in_vid_path, out_dir, detection_rate=None):
     Returns:
         None
     """
+
+    def probe_writer(out_dir, vid_name, w, h, fps):
+        logging.info("probe_writer: dir=%s exists=%s writable=%s", out_dir, os.path.isdir(out_dir), os.access(out_dir, os.W_OK))
+        logging.info("probe_writer: size=(%s,%s) fps=%s", w, h, fps)
+
+        tests = [
+            (cv2.CAP_FFMPEG, "XVID", os.path.join(out_dir, f"{vid_name}-detected.avi")),
+            (cv2.CAP_FFMPEG, "MJPG", os.path.join(out_dir, f"{vid_name}-detected.avi")),
+            (cv2.CAP_GSTREAMER, "XVID", os.path.join(out_dir, f"{vid_name}-detected.avi")),
+        ]
+
+        for api, codec, path in tests:
+            fourcc = cv2.VideoWriter_fourcc(*codec)
+            vw = cv2.VideoWriter(path, api, fourcc, float(fps), (int(w), int(h)))
+            ok = vw.isOpened()
+            logging.info("probe_writer: api=%s codec=%s path=%s opened=%s", api, codec, path, ok)
+            if ok:
+                try:
+                    logging.info("probe_writer: backend=%s", vw.getBackendName())
+                except Exception:
+                    pass
+                return vw, path, codec, api
+
+        return None, None, None, None
     vid_name = os.path.splitext(os.path.basename(in_vid_path))[0]
-    out_mkv_path = os.path.join(out_dir, '{}-detected.mkv'.format(vid_name))
-
     cap = cv2.VideoCapture(in_vid_path)
-    assert cap.isOpened()
+    assert cap.isOpened(), f"Cannot open input video: {in_vid_path}"
 
-    fourcc = cv2.VideoWriter_fourcc(*'X264')
     vid_width = int(round(cap.get(cv2.CAP_PROP_FRAME_WIDTH)))
     vid_height = int(round(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
-    vid_width_height = (vid_width, vid_height)
-
     fps = cap.get(cv2.CAP_PROP_FPS)
+    if not fps or fps <= 0:
+        fps = 30.0
 
-    vw = cv2.VideoWriter(out_mkv_path, fourcc, fps, vid_width_height)
+    vw, out_path, codec, api = probe_writer(out_dir, vid_name, vid_width, vid_height, fps)
+    if vw is None:
+        cap.release()
+        raise RuntimeError("VideoWriter could not be opened with tested APIs/codecs. Check OpenCV build/backends in this env.")
 
-    logging.info('Nb fps: {}.'.format(fps))
-    nb_fps_per_min = int(fps * 60)
+    logging.info("Writing output: %s (codec=%s api=%s)", out_path, codec, api)
 
     idx = 0
-    while(cap.isOpened()):
+    boxes = scores = labels = None
+    detection_rate = max(1, int(detection_rate or 1))
+
+    while cap.isOpened():
         ret, img = cap.read()
         if not ret:
             break
 
-        if idx % nb_fps_per_min == 0:
-            logging.info('{} minutes...'.format(int(idx / fps / 60)))
-
-        if idx % detection_rate == 0: # Detect every X frames
+        if idx % detection_rate == 0:
             boxes, scores, labels = find_objects_single(model, img)
 
-        for box, score, label in zip(boxes[0], scores[0], labels[0]):
-            if score < 0.5: break
-
-            misc_utils.draw_box(img, box, color=(0, 0, 255))
+        if boxes is not None:
+            for box, score, label in zip(boxes[0], scores[0], labels[0]):
+                if score < 0.5:
+                    break
+                misc_utils.draw_box(img, box, color=(0, 0, 255))
 
         vw.write(img)
         idx += 1
 
-
     cap.release()
     vw.release()
 
-    misc_utils.mkv_to_mp4(out_mkv_path, remove_mkv=True, has_audio=False, quiet=True)
+    if not os.path.exists(out_path) or os.path.getsize(out_path) == 0:
+        raise RuntimeError(f"Output file missing/empty after write: {out_path}")
+
+    logging.info("Done. Frames written: %d, output: %s, size=%d bytes", idx, out_path, os.path.getsize(out_path))
+
+    misc_utils.source_to_mp4(out_path, remove_mkv=True, has_audio=False, quiet=True)
 
 
 def get_random_augmentator(configs):
