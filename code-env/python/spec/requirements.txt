@@ -1,9 +1,12 @@
-keras==2.2.4
-h5py==2.10.0
-opencv-python==3.4.0.12
-Pillow>=5.1
+# TensorFlow 2.x runtime for Python 3.9-3.12.
+tensorflow==2.16.2
+tf-keras==2.16.0
+
+h5py>=3.10,<4
+opencv-python>=4.9,<5
+Pillow>=10,<12
+scikit-learn>=1.3,<2
+boto3>=1.34,<2
+
+# Legacy keras-retinanet build; runtime compatibility is handled via python-lib/keras_compat.py.
 git+https://github.com/fizyr/keras-retinanet.git@0d89a33bace90591cad7882cf0b1cdbf0fbced43
-pip==9.0.1
-scikit-learn>=0.19
-boto3>=1.7<1.8
-tensorflow==1.4.0

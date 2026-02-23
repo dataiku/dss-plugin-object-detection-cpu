@@ -1,22 +1,17 @@
 import subprocess as sp
 import os
-import random
+
 import logging
 
-import pandas as pd
 import numpy as np
-from sklearn.model_selection import train_test_split
-from keras import optimizers
+
+from keras_compat import bootstrap_keras_retinanet_compat
+
+# Must run before importing keras/keras-retinanet symbols.
+bootstrap_keras_retinanet_compat()
+
 from keras import callbacks
-from keras.utils import multi_gpu_model
-from keras.models import load_model
-import tensorflow as tf
 import cv2
-import keras_retinanet
-from keras_retinanet.models.resnet import resnet50_retinanet
-from keras_retinanet.models.retinanet import retinanet_bbox
-from keras_retinanet.utils.model import freeze as freeze_model
-from keras_retinanet.utils.image import read_image_bgr, preprocess_image, resize_image
 from keras_retinanet.utils.visualization import draw_box
 from keras_retinanet.utils.colors import label_color
 
@@ -24,22 +19,20 @@ from keras_retinanet.utils.colors import label_color
 logging.basicConfig(level=logging.INFO, format='[Object Detection] %(levelname)s - %(message)s')
 
 
-def mkv_to_mp4(mkv_path, remove_mkv=False, has_audio=True, quiet=True):
-    """Transform MKV to MP4 format.
+def source_to_mp4(input_path, remove_source=False, has_audio=True, quiet=True):
+    """Transform source video to MP4 format.
 
     Args:
-        mkv_path:   Path to the MKV temporary file.
-        remove_mkv: Delete the MKV temporary file.
+        input_path:   Path to the source temporary file.
+        remove_source: Delete the source temporary file.
         has_audio:  Keep audio in the MP4 file.
         quiet:      Silence ffmpeg conversion.
 
     Returns:
         None
     """
-    assert os.path.isfile(mkv_path)
-    print(mkv_path)
-    assert os.path.splitext(mkv_path)[1] == '.mkv'
-    mp4_path = os.path.splitext(mkv_path)[0] + '.mp4'
+    assert os.path.isfile(input_path)
+    mp4_path = os.path.splitext(input_path)[0] + '.mp4'
 
     if os.path.isfile(mp4_path):
         os.remove(mp4_path)
@@ -49,13 +42,13 @@ def mkv_to_mp4(mkv_path, remove_mkv=False, has_audio=True, quiet=True):
 
     quiet_str = '>/dev/null 2>&1' if quiet else ''
     cmd = 'ffmpeg -i {} -vcodec copy {} {} {}'.format(
-        mkv_path, audio_codec_string, mp4_path, quiet_str)
+        input_path, audio_codec_string, mp4_path, quiet_str)
 
     sp.call(cmd, shell=True)
 
 
-    if remove_mkv and os.path.isfile(mp4_path):
-        os.remove(mkv_path) # Remove mkv only if mp4 was not created.
+    if remove_source and os.path.isfile(mp4_path):
+        os.remove(input_path) # Remove mkv only if mp4 was not created.
 
 
 def split_dataset(df, val_split=0.8, shuffle=True, seed=42):
@@ -115,16 +108,19 @@ def jaccard(a, b):
 
 def compute_metrics(true_pos, false_pos, false_neg):
     """Compute the precision, recall, and f1 score."""
-    precision = true_pos / (true_pos + false_pos)
-    recall = true_pos / (true_pos + false_neg)
+    precision = true_pos / (true_pos + false_pos) if (true_pos + false_pos) else 0.0
+    recall = true_pos / (true_pos + false_neg) if (true_pos + false_neg) else 0.0
 
-    if precision == 0 or recall == 0: return precision, recall, f1
+    if precision == 0 or recall == 0:
+        return precision, recall, 0.0
 
     f1 = 2 / (1/precision + 1/recall)
     return precision, recall, f1
 
 
-def draw_bboxes(src_path, dst_path, df, label_cap, confidence_cap, ids):
+def draw_bboxes(src_path, source_folder, dst_path, dst_folder, df, label_cap, confidence_cap, ids):
+    from PIL import Image
+    
     """Draw boxes on images.
 
     Args:
@@ -138,13 +134,18 @@ def draw_bboxes(src_path, dst_path, df, label_cap, confidence_cap, ids):
     Returns:
         None.
     """
-    image = read_image_bgr(src_path)
+
+    with source_folder.get_download_stream(path=src_path) as stream:
+        image = np.array(Image.open(stream).convert('RGB'), copy=True)
+    # Convert RGB->BGR and force a writable contiguous buffer for OpenCV.
+    image = np.ascontiguousarray(image[:, :, ::-1].copy())
 
     for _, row in df.iterrows():
-        if isinstance(row.class_name, float): continue
+        if isinstance(row["class_name"], float):
+            continue
 
-        box = tuple(row[1:5])
-        name = str(row[5])
+        box = tuple(row[["x1", "y1", "x2", "y2"]])
+        name = str(row["class_name"])
 
         color = label_color(ids.index(name))
 
@@ -155,12 +156,18 @@ def draw_bboxes(src_path, dst_path, df, label_cap, confidence_cap, ids):
             if label_cap:
                 txt = [name]
             if confidence_cap:
-                confidence = round(row[6], 2)
+                confidence = round(row["confidence"], 2)
                 txt.append(str(confidence))
             draw_caption(image, box, ' '.join(txt))
 
     logging.info('Drawing {}'.format(dst_path))
-    cv2.imwrite(dst_path, image)
+    ext = os.path.splitext(dst_path)[1].lower() or '.jpg'
+    ok, encoded = cv2.imencode(ext, image)
+    if not ok:
+        raise RuntimeError('Could not encode image for {}'.format(dst_path))
+
+    with dst_folder.get_writer(dst_path) as w:
+        w.write(encoded.tobytes())
 
 
 def draw_caption(image, box, caption):

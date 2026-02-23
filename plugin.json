@@ -1,6 +1,6 @@
 {
     "id": "object-detection-cpu",
-    "version": "0.1.7",
+    "version": "0.1.8",
     "meta": {
         "label": "Object detection in images (CPU)",
         "description": "Detect objects in images using deep learning. \n⚠️ Starting with DSS version 10 this plugin is partially superseded by the native [object detection capabilities](https://doc.dataiku.com/dss/latest/machine-learning/computer-vision/index.html).",

@@ -8,3 +8,5 @@
 .htmlcov
 .DS_Store
 .idea
+/dist
+AGENTS.md

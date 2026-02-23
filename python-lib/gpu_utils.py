@@ -1,7 +1,26 @@
 import os
 
 import tensorflow as tf
-from keras.backend.tensorflow_backend import set_session
+
+try:
+    # Keras 2.2.x
+    from keras.backend.tensorflow_backend import set_session as keras_set_session
+except Exception:
+    try:
+        # TF2 compatibility path
+        from tensorflow.compat.v1.keras.backend import set_session as keras_set_session
+    except Exception:
+        keras_set_session = None
+
+
+def _is_tf1():
+    return tf.__version__.startswith('1.')
+
+
+def _set_session(config):
+    if keras_set_session is None:
+        return
+    keras_set_session(tf.compat.v1.Session(config=config))
 
 
 def load_gpu_options(should_use_gpu, list_gpu, gpu_allocation):
@@ -18,12 +37,18 @@ def load_gpu_options(should_use_gpu, list_gpu, gpu_allocation):
     gpu_options = {}
     if should_use_gpu:
         gpu_options['n_gpu'] = len(list_gpu.split(','))
-        
-        config = tf.ConfigProto()
+
         os.environ["CUDA_VISIBLE_DEVICES"] = list_gpu.strip()
-        config.gpu_options.visible_device_list = list_gpu.strip()
-        config.gpu_options.per_process_gpu_memory_fraction = gpu_allocation
-        set_session(tf.Session(config=config))
+
+        if _is_tf1():
+            config = tf.ConfigProto()
+            config.gpu_options.visible_device_list = list_gpu.strip()
+            config.gpu_options.per_process_gpu_memory_fraction = gpu_allocation
+            _set_session(config)
+        else:
+            # TF2/Keras3: keep visible devices via env var and allow dynamic growth.
+            for gpu in tf.config.list_physical_devices('GPU'):
+                tf.config.experimental.set_memory_growth(gpu, True)
     else:
         deactivate_gpu()
         gpu_options['n_gpu'] = 0
@@ -38,14 +63,17 @@ def deactivate_gpu():
     
 def can_use_gpu():
     """Check that system supports gpu."""
-    # Check that 'tensorflow-gpu' is installed on the current code-env
-    import pip
-    installed_packages = pip.get_installed_distributions()
-    return "tensorflow-gpu" in [p.project_name for p in installed_packages]
+    # TF1 often used tensorflow-gpu, while TF2 usually ships GPU support in tensorflow.
+    try:
+        return len(tf.config.list_physical_devices('GPU')) > 0
+    except Exception:
+        return False
 
 
 def set_gpus(gpus):
     """Short method to set gpu configuration."""
-    config = tf.ConfigProto()
-    config.gpu_options.visible_device_list = gpus.strip()
-    set_session(tf.Session(config=config))
+    os.environ["CUDA_VISIBLE_DEVICES"] = gpus.strip()
+    if _is_tf1():
+        config = tf.ConfigProto()
+        config.gpu_options.visible_device_list = gpus.strip()
+        _set_session(config)

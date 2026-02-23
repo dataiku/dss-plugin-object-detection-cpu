@@ -1,13 +1,24 @@
 import logging
 import os
+import cv2
+import math
 
 import numpy as np
-import cv2
+from keras_compat import bootstrap_keras_retinanet_compat
+
+# Must run before importing tensorflow/keras/keras-retinanet symbols.
+bootstrap_keras_retinanet_compat()
+
 import tensorflow as tf
+import keras
 from keras import optimizers
 from keras import callbacks
-from keras.utils import multi_gpu_model
-from keras.models import load_model
+import inspect
+
+try:
+    from keras.utils import multi_gpu_model
+except Exception:
+    multi_gpu_model = None
 import keras_retinanet
 from keras_retinanet.models.resnet import resnet50_retinanet
 from keras_retinanet.models.retinanet import retinanet_bbox
@@ -19,6 +30,75 @@ import misc_utils
 
 
 logging.basicConfig(level=logging.INFO, format='[Object Detection] %(levelname)s - %(message)s')
+
+
+def _ensure_legacy_keras_initializers():
+    """Backwards compatibility for older keras-retinanet code paths."""
+    if hasattr(keras.initializers, 'normal'):
+        return
+
+    def _normal(mean=0.0, stddev=0.05, seed=None):
+        return keras.initializers.RandomNormal(mean=mean, stddev=stddev, seed=seed)
+
+    keras.initializers.normal = _normal
+
+
+def _to_numpy_dtype(dtype):
+    """Convert tf/keras dtypes to numpy dtypes for old keras-retinanet code."""
+    if dtype is None:
+        return None
+    if isinstance(dtype, np.dtype):
+        return dtype
+    try:
+        return tf.as_dtype(dtype).as_numpy_dtype
+    except Exception:
+        pass
+    try:
+        return np.dtype(dtype)
+    except Exception:
+        return dtype
+
+
+def _ensure_legacy_retinanet_prior_probability():
+    """Patch keras-retinanet PriorProbability for keras/tf dtype compatibility."""
+    prior_cls = getattr(keras_retinanet.initializers, 'PriorProbability', None)
+    if prior_cls is None:
+        return
+
+    def _patched_call(self, shape, dtype=None):
+        np_dtype = _to_numpy_dtype(dtype) or np.float32
+        return np.ones(shape, dtype=np_dtype) * -math.log((1 - self.probability) / self.probability)
+
+    prior_cls.__call__ = _patched_call
+
+
+def _ensure_legacy_tf_resize_images():
+    """Restore removed tf.image.resize_images symbol for legacy keras-retinanet."""
+    if hasattr(tf.image, 'resize_images'):
+        return
+
+    legacy_resize = getattr(tf.compat.v1.image, 'resize_images', None)
+    if legacy_resize is not None:
+        tf.image.resize_images = legacy_resize
+        return
+
+    def _resize_images(images, size, method=tf.image.ResizeMethod.BILINEAR, align_corners=False,
+                       preserve_aspect_ratio=False, name=None):
+        del align_corners  # not supported by tf.image.resize in newer TF
+        return tf.image.resize(
+            images=images,
+            size=size,
+            method=method,
+            preserve_aspect_ratio=preserve_aspect_ratio,
+            name=name
+        )
+
+    tf.image.resize_images = _resize_images
+
+
+_ensure_legacy_keras_initializers()
+_ensure_legacy_retinanet_prior_probability()
+_ensure_legacy_tf_resize_images()
 
 
 def get_model(weights, num_classes, freeze=False, n_gpu=None):
@@ -39,6 +119,11 @@ def get_model(weights, num_classes, freeze=False, n_gpu=None):
     modifier = freeze_model if freeze else None
 
     if multi_gpu:
+        if multi_gpu_model is None:
+            logging.warning('`keras.utils.multi_gpu_model` is unavailable. Falling back to single model.')
+            model = resnet50_retinanet(num_classes=num_classes, modifier=modifier)
+            model.load_weights(weights, by_name=True, skip_mismatch=True)
+            return model, model
         logging.info('Loading model in multi gpu mode.')
         with tf.device('/cpu:0'):
             model = resnet50_retinanet(num_classes=num_classes, modifier=modifier)
@@ -75,10 +160,7 @@ def get_test_model(weights, num_classes):
 
 def compile_model(model, configs):
     """Compile retinanet."""
-    if configs['optimizer'].lower() == 'adam':
-        opt = optimizers.adam(lr=configs['lr'], clipnorm=0.001)
-    else:
-        opt = optmizers.SGD(lr=configs['lr'], momentum=True, nesterov=True, clipnorm=0.001)
+    opt = _build_legacy_compatible_optimizer(configs)
 
     model .compile(
         loss={
@@ -87,6 +169,65 @@ def compile_model(model, configs):
         },
         optimizer=opt
     )
+
+
+def _build_legacy_compatible_optimizer(configs):
+    """Build a legacy-compatible optimizer for training_v1 code paths."""
+    optimizer_name = configs['optimizer'].lower()
+    lr = float(configs['lr'])
+
+    if optimizer_name == 'adam':
+        constructor_paths = [
+            ('keras.optimizers.legacy.Adam', _get_nested_attr(optimizers, ['legacy', 'Adam'])),
+            ('keras.optimizers.Adam', getattr(optimizers, 'Adam', None)),
+            ('keras.optimizers.adam', getattr(optimizers, 'adam', None)),
+        ]
+        base_kwargs = {'clipnorm': 0.001}
+    else:
+        constructor_paths = [
+            ('keras.optimizers.legacy.SGD', _get_nested_attr(optimizers, ['legacy', 'SGD'])),
+            ('keras.optimizers.SGD', getattr(optimizers, 'SGD', None)),
+            ('keras.optimizers.sgd', getattr(optimizers, 'sgd', None)),
+        ]
+        base_kwargs = {'momentum': 0.9, 'nesterov': True, 'clipnorm': 0.001}
+
+    errors = []
+    for label, constructor in constructor_paths:
+        if constructor is None:
+            continue
+
+        for lr_key in ('learning_rate', 'lr'):
+            kwargs = dict(base_kwargs)
+            kwargs[lr_key] = lr
+            try:
+                opt = constructor(**kwargs)
+            except Exception as exc:
+                errors.append("{} with {} failed: {}".format(label, lr_key, exc))
+                continue
+
+            if hasattr(opt, 'get_updates'):
+                return opt
+
+            errors.append("{} with {} returned incompatible optimizer ({})".format(
+                label,
+                lr_key,
+                type(opt).__name__
+            ))
+
+    details = "; ".join(errors) if errors else "No compatible optimizer constructors found."
+    raise RuntimeError(
+        "Could not build a legacy-compatible '{}' optimizer with 'get_updates'. {}"
+        .format(optimizer_name, details)
+    )
+
+
+def _get_nested_attr(obj, names):
+    current = obj
+    for name in names:
+        current = getattr(current, name, None)
+        if current is None:
+            return None
+    return current
 
 
 def find_objects(model, paths):
@@ -178,49 +319,77 @@ def detect_in_video_file(model, in_vid_path, out_dir, detection_rate=None):
     Returns:
         None
     """
+
+    def probe_writer(out_dir, vid_name, w, h, fps):
+        logging.info("probe_writer: dir=%s exists=%s writable=%s", out_dir, os.path.isdir(out_dir), os.access(out_dir, os.W_OK))
+        logging.info("probe_writer: size=(%s,%s) fps=%s", w, h, fps)
+
+        tests = [
+            (cv2.CAP_FFMPEG, "XVID", os.path.join(out_dir, f"{vid_name}-detected.avi")),
+            (cv2.CAP_FFMPEG, "MJPG", os.path.join(out_dir, f"{vid_name}-detected.avi")),
+            (cv2.CAP_GSTREAMER, "XVID", os.path.join(out_dir, f"{vid_name}-detected.avi")),
+        ]
+
+        for api, codec, path in tests:
+            fourcc = cv2.VideoWriter_fourcc(*codec)
+            vw = cv2.VideoWriter(path, api, fourcc, float(fps), (int(w), int(h)))
+            ok = vw.isOpened()
+            logging.info("probe_writer: api=%s codec=%s path=%s opened=%s", api, codec, path, ok)
+            if ok:
+                try:
+                    logging.info("probe_writer: backend=%s", vw.getBackendName())
+                except Exception:
+                    pass
+                return vw, path, codec, api
+
+        return None, None, None, None
     vid_name = os.path.splitext(os.path.basename(in_vid_path))[0]
-    out_mkv_path = os.path.join(out_dir, '{}-detected.mkv'.format(vid_name))
-
     cap = cv2.VideoCapture(in_vid_path)
-    assert cap.isOpened()
+    assert cap.isOpened(), f"Cannot open input video: {in_vid_path}"
 
-    fourcc = cv2.VideoWriter_fourcc(*'X264')
     vid_width = int(round(cap.get(cv2.CAP_PROP_FRAME_WIDTH)))
     vid_height = int(round(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
-    vid_width_height = (vid_width, vid_height)
-
     fps = cap.get(cv2.CAP_PROP_FPS)
+    if not fps or fps <= 0:
+        fps = 30.0
 
-    vw = cv2.VideoWriter(out_mkv_path, fourcc, fps, vid_width_height)
+    vw, out_path, codec, api = probe_writer(out_dir, vid_name, vid_width, vid_height, fps)
+    if vw is None:
+        cap.release()
+        raise RuntimeError("VideoWriter could not be opened with tested APIs/codecs. Check OpenCV build/backends in this env.")
 
-    logging.info('Nb fps: {}.'.format(fps))
-    nb_fps_per_min = int(fps * 60)
+    logging.info("Writing output: %s (codec=%s api=%s)", out_path, codec, api)
 
     idx = 0
-    while(cap.isOpened()):
+    boxes = scores = labels = None
+    detection_rate = max(1, int(detection_rate or 1))
+
+    while cap.isOpened():
         ret, img = cap.read()
         if not ret:
             break
 
-        if idx % nb_fps_per_min == 0:
-            logging.info('{} minutes...'.format(int(idx / fps / 60)))
-
-        if idx % detection_rate == 0: # Detect every X frames
+        if idx % detection_rate == 0:
             boxes, scores, labels = find_objects_single(model, img)
 
-        for box, score, label in zip(boxes[0], scores[0], labels[0]):
-            if score < 0.5: break
-
-            misc_utils.draw_box(img, box, color=(0, 0, 255))
+        if boxes is not None:
+            for box, score, label in zip(boxes[0], scores[0], labels[0]):
+                if score < 0.5:
+                    break
+                misc_utils.draw_box(img, box, color=(0, 0, 255))
 
         vw.write(img)
         idx += 1
 
-
     cap.release()
     vw.release()
 
-    misc_utils.mkv_to_mp4(out_mkv_path, remove_mkv=True, has_audio=False, quiet=True)
+    if not os.path.exists(out_path) or os.path.getsize(out_path) == 0:
+        raise RuntimeError(f"Output file missing/empty after write: {out_path}")
+
+    logging.info("Done. Frames written: %d, output: %s, size=%d bytes", idx, out_path, os.path.getsize(out_path))
+
+    misc_utils.source_to_mp4(out_path, remove_source=True, has_audio=False, quiet=True)
 
 
 def get_random_augmentator(configs):
@@ -251,13 +420,17 @@ class MultiGPUModelCheckpoint(callbacks.ModelCheckpoint):
     def __init__(self, filepath, base_model, monitor='val_loss', verbose=0,
                  save_best_only=False, save_weights_only=False,
                  mode='auto', period=1):
-        super(MultiGPUModelCheckpoint, self).__init__(filepath,
-                                                      monitor=monitor,
-                                                      verbose=verbose,
-                                                      save_best_only=save_best_only,
-                                                      save_weights_only=save_weights_only,
-                                                      mode=mode,
-                                                      period=period)
+        kwargs = dict(
+            monitor=monitor,
+            verbose=verbose,
+            save_best_only=save_best_only,
+            save_weights_only=save_weights_only,
+            mode=mode,
+        )
+        if 'period' in inspect.signature(callbacks.ModelCheckpoint.__init__).parameters:
+            kwargs['period'] = period
+
+        super(MultiGPUModelCheckpoint, self).__init__(filepath, **kwargs)
         self.base_model = base_model
 
     def on_epoch_end(self, epoch, logs=None):

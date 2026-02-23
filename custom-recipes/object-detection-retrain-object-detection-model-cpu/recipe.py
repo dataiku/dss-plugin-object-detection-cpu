@@ -19,6 +19,20 @@ from json import JSONDecodeError
 logging.basicConfig(level=logging.INFO, format='[Object Detection] %(levelname)s - %(message)s')
 
 
+def _batch_iterator(generator):
+    """Infinite Python iterator over generator batches for tf_keras adapter."""
+    while True:
+        for _ in range(len(generator)):
+            if hasattr(generator, '__getitem__'):
+                yield generator[_]
+            elif hasattr(generator, 'next'):
+                yield generator.next()
+            else:
+                yield next(generator)
+        if hasattr(generator, 'on_epoch_end'):
+            generator.on_epoch_end()
+
+
 images_folder = dataiku.Folder(get_input_names_for_role('images')[0])
 bb_df = dataiku.Dataset(get_input_names_for_role('bounding_boxes')[0]).get_dataframe()
 weights_folder = dataiku.Folder(get_input_names_for_role('weights')[0])
@@ -81,6 +95,9 @@ val_gen = DfGenerator(val_df, class_mapping, configs,
                       batch_size=batch_size)
 if len(val_gen) == 0: val_gen = None
 
+train_data = _batch_iterator(train_gen)
+val_data = _batch_iterator(val_gen) if val_gen is not None else None
+
 model, train_model = retinanet_model.get_model(weights, len(class_mapping),
                                                freeze=configs['freeze'],
                                                n_gpu=gpu_opts['n_gpu'])
@@ -102,12 +119,12 @@ cbs.append(
 logging.info('Training model for {} epochs.'.format(configs['epochs']))
 logging.info('Nb labels: {:15}.'.format(len(class_mapping)))
 logging.info('Nb images: {:15}.'.format(len(train_gen.image_names)))
-logging.info('Nb val images: {:11}'.format(len(val_gen.image_names)))
+logging.info('Nb val images: {:11}'.format(len(val_gen.image_names) if val_gen is not None else 0))
 
-train_model.fit_generator(
-    train_gen,
+train_model.fit(
+    train_data,
     steps_per_epoch=len(train_gen),
-    validation_data=val_gen,
+    validation_data=val_data,
     validation_steps=len(val_gen) if val_gen is not None else None,
     callbacks=cbs,
     epochs=int(configs['epochs']),
