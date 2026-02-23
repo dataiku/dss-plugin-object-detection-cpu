@@ -1,7 +1,5 @@
 import logging
 import os
-os.environ["OPENCV_LOG_LEVEL"] = "DEBUG"
-os.environ["OPENCV_VIDEOIO_DEBUG"] = "1"   # important
 import cv2
 import math
 

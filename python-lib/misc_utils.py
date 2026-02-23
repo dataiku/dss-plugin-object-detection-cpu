@@ -32,7 +32,6 @@ def source_to_mp4(input_path, remove_source=False, has_audio=True, quiet=True):
         None
     """
     assert os.path.isfile(input_path)
-    print(input_path)
     mp4_path = os.path.splitext(input_path)[0] + '.mp4'
 
     if os.path.isfile(mp4_path):
