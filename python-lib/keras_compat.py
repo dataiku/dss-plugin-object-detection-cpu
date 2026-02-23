@@ -1,13 +1,26 @@
-import importlib.metadata as importlib_metadata
+try:
+    import importlib.metadata as importlib_metadata
+except Exception:
+    try:
+        import importlib_metadata  # type: ignore
+    except Exception:
+        importlib_metadata = None
 import os
 import sys
 import types
 
 
 def _safe_version(pkg_name):
+    if importlib_metadata is not None:
+        try:
+            return importlib_metadata.version(pkg_name)
+        except Exception:
+            pass
+
     try:
-        return importlib_metadata.version(pkg_name)
-    except importlib_metadata.PackageNotFoundError:
+        import pkg_resources
+        return pkg_resources.get_distribution(pkg_name).version
+    except Exception:
         return "not-installed"
 
 

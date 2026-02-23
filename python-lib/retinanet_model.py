@@ -162,17 +162,7 @@ def get_test_model(weights, num_classes):
 
 def compile_model(model, configs):
     """Compile retinanet."""
-    lr = float(configs['lr'])
-    if configs['optimizer'].lower() == 'adam':
-        try:
-            opt = optimizers.Adam(learning_rate=lr, clipnorm=0.001)
-        except Exception:
-            opt = optimizers.adam(lr=lr, clipnorm=0.001)
-    else:
-        try:
-            opt = optimizers.SGD(learning_rate=lr, momentum=0.9, nesterov=True, clipnorm=0.001)
-        except Exception:
-            opt = optimizers.SGD(lr=lr, momentum=0.9, nesterov=True, clipnorm=0.001)
+    opt = _build_legacy_compatible_optimizer(configs)
 
     model .compile(
         loss={
@@ -181,6 +171,65 @@ def compile_model(model, configs):
         },
         optimizer=opt
     )
+
+
+def _build_legacy_compatible_optimizer(configs):
+    """Build a legacy-compatible optimizer for training_v1 code paths."""
+    optimizer_name = configs['optimizer'].lower()
+    lr = float(configs['lr'])
+
+    if optimizer_name == 'adam':
+        constructor_paths = [
+            ('keras.optimizers.legacy.Adam', _get_nested_attr(optimizers, ['legacy', 'Adam'])),
+            ('keras.optimizers.Adam', getattr(optimizers, 'Adam', None)),
+            ('keras.optimizers.adam', getattr(optimizers, 'adam', None)),
+        ]
+        base_kwargs = {'clipnorm': 0.001}
+    else:
+        constructor_paths = [
+            ('keras.optimizers.legacy.SGD', _get_nested_attr(optimizers, ['legacy', 'SGD'])),
+            ('keras.optimizers.SGD', getattr(optimizers, 'SGD', None)),
+            ('keras.optimizers.sgd', getattr(optimizers, 'sgd', None)),
+        ]
+        base_kwargs = {'momentum': 0.9, 'nesterov': True, 'clipnorm': 0.001}
+
+    errors = []
+    for label, constructor in constructor_paths:
+        if constructor is None:
+            continue
+
+        for lr_key in ('learning_rate', 'lr'):
+            kwargs = dict(base_kwargs)
+            kwargs[lr_key] = lr
+            try:
+                opt = constructor(**kwargs)
+            except Exception as exc:
+                errors.append("{} with {} failed: {}".format(label, lr_key, exc))
+                continue
+
+            if hasattr(opt, 'get_updates'):
+                return opt
+
+            errors.append("{} with {} returned incompatible optimizer ({})".format(
+                label,
+                lr_key,
+                type(opt).__name__
+            ))
+
+    details = "; ".join(errors) if errors else "No compatible optimizer constructors found."
+    raise RuntimeError(
+        "Could not build a legacy-compatible '{}' optimizer with 'get_updates'. {}"
+        .format(optimizer_name, details)
+    )
+
+
+def _get_nested_attr(obj, names):
+    current = obj
+    for name in names:
+        current = getattr(current, name, None)
+        if current is None:
+            return None
+    return current
 
 
 def find_objects(model, paths):
